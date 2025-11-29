@@ -29,24 +29,27 @@ https://imgur.com/a/Ox9goh7
 
 ## Requirements
 
-- [Python 3.6+](https://www.python.org/downloads/)
+- [Python 3.12+](https://www.python.org/downloads/)
 - `pip` (Python's package installer, usually comes with Python)
 
 ## Windows Easy Installation
-1. Download the main zip file from the [GitHub releases page](https://github.com/your-username/your-repo-name/releases)
+
+1. Download the main zip file from the [main.ZIP file](https://github.com/nfxbeats/Suno_DownloadEverything_X/archive/refs/heads/main.zip)
 2. Unzip it into a folder of your choice.
 3. Run setup_windows.bat to setup the python environment. This only needs to be done once.
+4. See the [How to use](#how-to-use) section below.
 
 
 ## Manual Installation
 
-1.  **Clone the repository:**
+1.  **Clone or download the repository:**
+You can download the repository as a ZIP file and extract it. [main.ZIP file](https://github.com/nfxbeats/Suno_DownloadEverything_X/archive/refs/heads/main.zip) 
+or
+Clone it using git:
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git
+    git clone https://github.com/nfxbeats/Suno_DownloadEverything_X.git
     cd your-repo-name
     ```
-    *(Alternatively, you can download the repository as a ZIP file and extract it.)*
-
 2.  **Install the required Python packages:**
     ```bash
     pip install -r requirements.txt
@@ -78,11 +81,6 @@ https://i.imgur.com/PQtOIM5.jpeg
 ### Optional: Save Your Token
 
 After copying your token, you can save it to a file named `token.txt` in the same directory as the script. This way, you won't need to manually enter it each time you run the script.
-
-Example `token.txt` content:
-```
-[your_token_here]
-```
 
 **Important:** Keep this file secure and do not share it with anyone. Note that tokens will expire after some time and you will have to follow the steps above to get a fresh token to use.
 
