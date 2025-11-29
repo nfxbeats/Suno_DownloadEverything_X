@@ -1,4 +1,4 @@
-# Suno Bulk Downloader
+# Suno Download Everything X
 
 A simple command-line Python script to bulk download all of your private songs from [Suno AI](https://suno.com/).
 
@@ -13,7 +13,7 @@ This is based off the work of [@sunsetacoustic](https://github.com/sunsetsacoust
 - **Page Range Selection:** Allows downloading songs from a specific range of pages instead of the entire library.
 - **Liked-Only Filter:** By default, only downloads songs you've liked. Can be toggled to download all tracks.
 - **Track Index Files:** Create a JSON index of tracks instead of downloading them, then use this index later to download specific tracks.
-- **Track ID Suffixes:** Appends the last 6 characters of the track ID to filenames (e.g., `My Song_a1b2c3.mp3`) for easy identification (enabled by default).
+- **Track ID Suffixes:** Appends the last 6 characters of the track ID to filenames (e.g., `My Song_a1b2c3.mp3`) for easy identification and dupe checking. (enabled by default).
 - **Skip Existing Files:** Automatically skips downloading tracks that already exist in the download directory, making it easy to resume interrupted downloads or update your collection.
 - **Complete Metadata:** Embeds the title, artist, cover art (thumbnail), full track ID, and generation prompt into the MP3 files.
 - **File Sanitization:** Cleans up song titles to create valid filenames for any operating system.
@@ -23,20 +23,57 @@ This is based off the work of [@sunsetacoustic](https://github.com/sunsetsacoust
 - **User-Friendly Output:** Uses colored console output for clear and readable progress updates.
 - **Interactive Mode:** Includes a prompt mode that guides you through the setup process.
 
-
-https://imgur.com/a/Ox9goh7
-
-
 ## Requirements
 
 - [Python 3.12+](https://www.python.org/downloads/)
 - `pip` (Python's package installer, usually comes with Python)
 
+## Metadata Features
+
+The downloader embeds several types of metadata into your MP3 files:
+
+1. **Basic Metadata:** Track title and artist name
+2. **Thumbnail:** Cover art (if enabled)
+3. **Track ID:** The full unique Suno track identifier 
+4. **Generation Prompt:** The prompt used to generate the track 
+5. **Lyrics:** Any lyrics used
+
+This makes your downloaded tracks more organized and easier to manage in media players that support ID3 tags.
+
+The tags used are as follows:
+
+| MP3 Tag | Description |
+| :------ | :---------- |
+|TITLE| The title of the track |
+|ARTIST| The name of the artist |
+|APIC| The embedded cover art image |
+|UNSYNCED LYRICS| The lyrics of the song |
+|TRACKID| The unique identifier for the track |
+|PROMPT| The prompt used to generate the track |
+
+I recommend you use the [Foobar2000 MP3 player](https://www.foobar2000.org/) which is a cross-platform app that allows you to see and copy this data by right clicking on the MP3 and selecting 'Properties'
+
+## Resumable Downloads
+
+One of the key features is the ability to resume interrupted downloads:
+
+1. With the `--with-id-suffix` option enabled (default), each track is saved with a portion of its unique ID in the filename
+2. When you run the downloader again, it checks for existing files with matching IDs
+3. If a matching file is found, the track is skipped
+4. This allows you to safely run the downloader multiple times without duplicating tracks
+
+This is particularly useful for:
+- Resuming after network interruptions
+- Adding new tracks to your collection
+- Fixing partial downloads
+- Resuming after your token expires and you copy the new one.
+
+
 ## Windows Easy Installation
 
 1. Download the main zip file from the [main.ZIP file](https://github.com/nfxbeats/Suno_DownloadEverything_X/archive/refs/heads/main.zip)
 2. Unzip it into a folder of your choice.
-3. Run setup_windows.bat to setup the python environment. This only needs to be done once.
+3. Run `setup_windows.bat` to setup the python environment. This only needs to be done once.
 4. See the [How to use](#how-to-use) section below.
 
 
@@ -73,16 +110,19 @@ The script requires a **Suno Authorization Token** to access your private librar
 10. **Copy only the long string of characters** (the token itself), *without* the word `Bearer `.
 
 Example (Copy the whole string)
-https://i.imgur.com/PQtOIM5.jpeg
+![Example screenshot of the token](images/suno-token.png)
 
 
-**Important:** Your token is like a password. **Do not share it with anyone.**
+> [!IMPORTANT]
+> Your token is like a password. **Do not share it with anyone.** Note that tokens will expire after some time and you will have to follow the steps above to get a fresh token to use.
+
 
 ### Optional: Save Your Token
 
 After copying your token, you can save it to a file named `token.txt` in the same directory as the script. This way, you won't need to manually enter it each time you run the script.
 
-**Important:** Keep this file secure and do not share it with anyone. Note that tokens will expire after some time and you will have to follow the steps above to get a fresh token to use.
+> [!NOTE] 
+> Keep this file secure and do not share it with anyone. You should delete it when done as a safety measure.
 
 ### Step 2: Run the Script
 
@@ -171,43 +211,6 @@ python main.py --token-file "token.txt" --start-page 1 --end-page 10
 - `--log-level` (Optional): Set logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Default is `INFO`.
 - `--log-file` (Optional): Save logs to a file.
 
-## Metadata Features
-
-The downloader embeds several types of metadata into your MP3 files:
-
-1. **Basic Metadata:** Track title and artist name
-2. **Thumbnail:** Cover art (if enabled)
-3. **Track ID:** The full unique Suno track identifier (stored as a custom TXXX ID3 tag)
-4. **Generation Prompt:** The prompt used to generate the track (stored as lyrics)
-5. **Tags:** Any additional tags from Suno
-
-This makes your downloaded tracks more organized and easier to manage in media players that support ID3 tags.
-
-The tags used are as follows:
-
-| MP3 Tag | Description |
-| :------ | :---------- |
-|TITLE| The title of the track |
-|ARTIST| The name of the artist |
-|APIC| The embedded cover art image |
-|UNSYNCED LYRICS| The lyrics of the song |
-|TRACKID| The unique identifier for the track |
-|PROMPT| The prompt used to generate the track |
-
-## Resumable Downloads
-
-One of the key features is the ability to resume interrupted downloads:
-
-1. With the `--with-id-suffix` option enabled (default), each track is saved with its unique ID in the filename
-2. When you run the downloader again, it checks for existing files with matching IDs
-3. If a matching file is found, the track is skipped
-4. This allows you to safely run the downloader multiple times without duplicating tracks
-
-This is particularly useful for:
-- Resuming after network interruptions
-- Adding new tracks to your collection
-- Fixing partial downloads
-- Resuming after your token expires and you copy the new one.
 
 ## Disclaimer
 
