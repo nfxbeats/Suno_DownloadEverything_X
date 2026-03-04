@@ -151,13 +151,14 @@ python main.py --token "<your pasted token>"
 
 **Use Downloads token/workspace files automatically:**
 ```bash
-python main.py --prompt --dldata
+python main.py --prompt --dldata "C:\\Users\\nfxbe\\Downloads"
 ```
-With `--dldata`, the script will try to load:
-- token from `C:\Users\nfxbe\Downloads\token.txt`
-- workspace ID from `C:\Users\nfxbe\Downloads\wid.txt`
+With `--dldata "<folder>"`, the script will try to load:
+- token from `<folder>\\token.txt`
+- workspace ID from `<folder>\\wid.txt`
 
 If those files exist and contain valid values, token/workspace prompts are skipped.
+When both files exist, the remaining interactive prompts are auto-accepted with defaults.
 
 This will download all your liked songs with thumbnails and track ID suffixes into a folder named `suno-downloads`.
 
@@ -208,7 +209,7 @@ python main.py --token-file "token.txt" --start-page 1 --end-page 10
 - `--token` **(Required if not using --token-file or --prompt)**: Your Suno authorization token.
 - `--token-file` **(Required if not using --token or --prompt)**: Path to a text file containing your Suno authorization token.
 - `--prompt` **(Required if not using --token or --token-file)**: Interactive prompt for all download parameters.
-- `--dldata` (Optional): Load token from `C:\Users\nfxbe\Downloads\token.txt` and workspace ID from `C:\Users\nfxbe\Downloads\wid.txt` when available; in prompt mode this skips token/workspace prompts.
+- `--dldata <folder>` (Optional): Folder path containing `token.txt` and `wid.txt` (for example `--dldata "C:\Users\nfxbe\Downloads"`). Tip: avoid ending a quoted Windows path with `\` in `cmd.exe`. In prompt mode, token/workspace prompts are skipped when those files are present.
 - `--directory` (Optional): The local directory where files will be saved. Defaults to `suno-downloads`.
 - `--with-thumbnail` (Optional): Download and embed the song's cover art. **Enabled by default**.
 - `--with-id-suffix` (Optional): Append last 6 characters of track ID to filenames. **Enabled by default**.

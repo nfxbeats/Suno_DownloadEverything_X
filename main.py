@@ -15,8 +15,25 @@ from utils import (
 from downloader import SunoDownloader
 
 
-DL_TOKEN_FILE = r"C:\Users\nfxbe\Downloads\token.txt"
-DL_WORKSPACE_FILE = r"C:\Users\nfxbe\Downloads\wid.txt"
+DL_TOKEN_FILENAME = "token.txt"
+DL_WORKSPACE_FILENAME = "wid.txt"
+
+
+def normalize_dldata_dir(dldata_dir: Optional[str]) -> Optional[str]:
+    """Normalize dldata directory path from CLI input."""
+    if not dldata_dir:
+        return None
+
+    normalized = dldata_dir.strip()
+
+    # Handle accidental unmatched trailing quote (common with ending backslash in quoted Windows paths)
+    normalized = normalized.rstrip('"').rstrip("'")
+
+    # Remove surrounding quotes if still present
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in ['"', "'"]:
+        normalized = normalized[1:-1]
+
+    return os.path.normpath(normalized)
 
 
 class InteractivePrompt:
@@ -192,23 +209,70 @@ def load_workspace_id_from_file(filepath: str) -> str:
         raise ConfigurationError(f"Error reading workspace ID file {filepath}: {e}")
 
 
-def load_dldata_values() -> Dict[str, Optional[str]]:
-    """Load token/workspace from fixed Downloads files for --dldata mode."""
+def load_text_value_from_file(filepath: str, value_name: str) -> str:
+    """Load a non-empty text value from file without format validation."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            value = f.read().strip()
+
+        if not value:
+            raise ConfigurationError(f"{value_name} file is empty: {filepath}")
+
+        logger.info(f"{value_name} loaded from {filepath}")
+        return value
+    except FileNotFoundError:
+        raise ConfigurationError(f"{value_name} file not found: {filepath}")
+    except Exception as e:
+        raise ConfigurationError(f"Error reading {value_name} file {filepath}: {e}")
+
+
+def load_dldata_values(dldata_dir: str) -> Dict[str, Optional[str]]:
+    """Load token/workspace from token.txt and wid.txt inside a provided folder."""
     values: Dict[str, Optional[str]] = {"token": None, "workspace_id": None}
 
-    if os.path.isfile(DL_TOKEN_FILE):
+    if not os.path.isdir(dldata_dir):
+        logger.warning(f"--dldata folder does not exist: {dldata_dir}")
+        return values
+
+    token_file = os.path.join(dldata_dir, DL_TOKEN_FILENAME)
+    workspace_file = os.path.join(dldata_dir, DL_WORKSPACE_FILENAME)
+
+    if os.path.isfile(token_file):
         try:
-            values["token"] = load_token_from_file(DL_TOKEN_FILE)
+            # In --dldata mode, skip prompt when file exists by loading raw token text.
+            values["token"] = load_text_value_from_file(token_file, "Token")
         except ConfigurationError as e:
             logger.warning(f"Could not load --dldata token file: {e}")
 
-    if os.path.isfile(DL_WORKSPACE_FILE):
+    if os.path.isfile(workspace_file):
         try:
-            values["workspace_id"] = load_workspace_id_from_file(DL_WORKSPACE_FILE)
+            values["workspace_id"] = load_workspace_id_from_file(workspace_file)
         except ConfigurationError as e:
             logger.warning(f"Could not load --dldata workspace file: {e}")
 
     return values
+
+
+def build_default_prompt_options(preset_workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    """Build prompt defaults without asking for interactive input."""
+    last_folder = load_last_download_folder() or config.DEFAULT_DOWNLOAD_DIR
+
+    options: Dict[str, Any] = {
+        'directory': last_folder,
+        'threads': config.DEFAULT_THREADS,
+        'with_thumbnails': True,
+        'with_id_suffix': True,
+    }
+
+    if preset_workspace_id:
+        options['workspace_id'] = preset_workspace_id
+        return options
+
+    options.update({
+        'liked_only': True,
+        'start_page': 1,
+    })
+    return options
 
 
 def create_argument_parser() -> argparse.ArgumentParser:
@@ -256,10 +320,11 @@ Examples:
     # Workspace options
     parser.add_argument(
         "--dldata",
-        action="store_true",
+        type=str,
+        metavar="FOLDER",
         help=(
-            "Load token from C:\\Users\\nfxbe\\Downloads\\token.txt and workspace ID "
-            "from C:\\Users\\nfxbe\\Downloads\\wid.txt when available"
+            "Folder containing token.txt and wid.txt (e.g. "
+            "C:\\Users\\nfxbe\\Downloads)"
         )
     )
     parser.add_argument(
@@ -370,13 +435,19 @@ Examples:
     return parser
 
 
-def handle_interactive_mode(use_dldata: bool = False) -> Dict[str, Any]:
+def handle_interactive_mode(dldata_dir: Optional[str] = None) -> Dict[str, Any]:
     """Handle interactive mode and return configuration."""
     prompt = InteractivePrompt()
     
     logger.info("=== Suno Downloader - Interactive Setup ===")
     
-    dldata_values = load_dldata_values() if use_dldata else {"token": None, "workspace_id": None}
+    dldata_values = load_dldata_values(dldata_dir) if dldata_dir else {"token": None, "workspace_id": None}
+
+    token_file_exists = False
+    workspace_file_exists = False
+    if dldata_dir:
+        token_file_exists = os.path.isfile(os.path.join(dldata_dir, DL_TOKEN_FILENAME))
+        workspace_file_exists = os.path.isfile(os.path.join(dldata_dir, DL_WORKSPACE_FILENAME))
 
     # Get token
     token = dldata_values.get("token")
@@ -390,7 +461,13 @@ def handle_interactive_mode(use_dldata: bool = False) -> Dict[str, Any]:
     if preset_workspace_id:
         logger.info("Using workspace ID from --dldata file")
 
-    options = prompt.get_download_options(preset_workspace_id=preset_workspace_id)
+    auto_accept_defaults = bool(dldata_dir and token_file_exists and workspace_file_exists)
+    if auto_accept_defaults:
+        logger.info("--dldata files found; accepting defaults for remaining prompt options")
+        options = build_default_prompt_options(preset_workspace_id=preset_workspace_id)
+    else:
+        options = prompt.get_download_options(preset_workspace_id=preset_workspace_id)
+
     options['token'] = token
     
     return options
@@ -399,7 +476,7 @@ def handle_interactive_mode(use_dldata: bool = False) -> Dict[str, Any]:
 def handle_test_mode(args: argparse.Namespace) -> None:
     """Handle test mode operations."""
     # Get token for testing
-    dldata_values = load_dldata_values() if args.dldata else {"token": None}
+    dldata_values = load_dldata_values(args.dldata) if args.dldata else {"token": None}
 
     if args.token:
         token = args.token
@@ -461,6 +538,7 @@ def main():
     """Main entry point."""
     parser = create_argument_parser()
     args = parser.parse_args()
+    args.dldata = normalize_dldata_dir(args.dldata)
     
     # Set up logging
     setup_logger(level=args.log_level, log_file=args.log_file)
@@ -469,7 +547,7 @@ def main():
         # Handle different modes
         if args.prompt:
             # Interactive mode
-            config_dict = handle_interactive_mode(use_dldata=args.dldata)
+            config_dict = handle_interactive_mode(dldata_dir=args.dldata)
             
         elif args.test_api or args.test_playlist or args.list_workspaces:
             # Test mode or workspace listing
@@ -478,7 +556,7 @@ def main():
         
         elif args.download_workspace:
             # Download workspace mode
-            dldata_values = load_dldata_values() if args.dldata else {"token": None}
+            dldata_values = load_dldata_values(args.dldata) if args.dldata else {"token": None}
 
             if not (args.token or args.token_file or dldata_values.get("token")):
                 if not validate_token_file(config.DEFAULT_TOKEN_FILE):
@@ -522,7 +600,7 @@ def main():
             
         else:
             # Command-line mode
-            dldata_values = load_dldata_values() if args.dldata else {"token": None}
+            dldata_values = load_dldata_values(args.dldata) if args.dldata else {"token": None}
 
             if not (args.token or args.token_file or dldata_values.get("token")):
                 parser.error("Either --token, --token-file, or --prompt is required")

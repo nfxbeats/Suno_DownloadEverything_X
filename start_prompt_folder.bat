@@ -44,7 +44,7 @@ echo Starting Suno Downloader in interactive prompt mode...
 echo Note: When prompted for download folder, press Enter to use: %DOWNLOAD_FOLDER%
 echo Or enter a different path to override.
 echo.
-python main.py --prompt --dldata
+python main.py --prompt --dldata "C:\Users\nfxbe\Downloads\"
 
 REM If the program exits, wait for user to press a key
 echo.
