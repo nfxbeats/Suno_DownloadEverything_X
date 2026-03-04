@@ -189,6 +189,120 @@ class SunoDownloader:
         except Exception as e:
             raise DownloadError(f"Index creation failed: {e}")
     
+    def create_workspaces_index(self, index_file: str = None) -> Dict[str, Any]:
+        """
+        Create an index file of workspaces (projects) without downloading.
+        
+        Args:
+            index_file: Path to save index file (default: workspaces.json)
+            
+        Returns:
+            Workspace index creation statistics
+        """
+        if index_file is None:
+            index_file = config.DEFAULT_WORKSPACE_INDEX
+        
+        logger.info(f"Creating workspaces index file: {index_file}")
+        
+        try:
+            # Get all workspaces from API
+            workspaces = self.api_client.get_all_workspaces()
+            
+            # Create index data with metadata
+            index_data = {
+                "metadata": {
+                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "total_workspaces": len(workspaces)
+                },
+                "workspaces": workspaces
+            }
+            
+            # Save index file
+            with open(index_file, 'w', encoding='utf-8') as f:
+                json.dump(index_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Workspaces index file created with {len(workspaces)} workspaces")
+            return {"workspaces_indexed": len(workspaces), "index_file": index_file}
+            
+        except Exception as e:
+            raise DownloadError(f"Workspace index creation failed: {e}")
+    
+    def download_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """
+        Download all tracks from a specific workspace.
+        
+        Args:
+            workspace_id: Workspace/project ID to download
+            
+        Returns:
+            Download statistics
+        """
+        logger.info(f"Downloading workspace: {workspace_id}")
+        
+        try:
+            # Get workspace data
+            workspace_data = self.api_client.get_workspace_by_id(workspace_id)
+            
+            # Extract workspace name and clips
+            workspace_name = workspace_data.get("name", workspace_id)
+            project_clips = workspace_data.get("project_clips", [])
+            
+            if not project_clips:
+                logger.warning(f"No clips found in workspace: {workspace_name}")
+                return {"downloaded": 0, "skipped": 0, "failed": 0, "total_tracks": 0}
+            
+            logger.info(f"Workspace '{workspace_name}' contains {len(project_clips)} clips")
+            
+            # Create workspace subfolder
+            safe_workspace_name = sanitize_filename(workspace_name)
+            workspace_dir = os.path.join(self.download_dir, safe_workspace_name)
+            ensure_directory_exists(workspace_dir)
+            
+            logger.info(f"Downloading to: {workspace_dir}")
+            
+            # Temporarily change download directory to workspace folder
+            original_dir = self.download_dir
+            self.download_dir = workspace_dir
+            
+            # Reset stats for this workspace
+            self.stats = {
+                'total_tracks': 0,
+                'downloaded': 0,
+                'skipped': 0,
+                'failed': 0,
+                'start_time': time.time(),
+                'concurrent': 0
+            }
+            
+            try:
+                # Process each clip from project_clips structure
+                all_tracks = []
+                for project_clip in project_clips:
+                    # Extract the nested clip object
+                    clip = project_clip.get("clip", {})
+                    if clip and clip.get("status") == "complete":
+                        # Process track data similar to feed tracks
+                        track_data = self.api_client._process_track_data(clip, 1)
+                        all_tracks.append(track_data)
+                
+                # Use ThreadPoolExecutor for concurrent downloads
+                with ThreadPoolExecutor(max_workers=self.max_threads) as executor:
+                    futures = [executor.submit(self._download_single_track, track_data) for track_data in all_tracks]
+                    
+                    # Wait for all downloads to complete
+                    for future in futures:
+                        future.result()
+                
+            finally:
+                # Restore original download directory
+                self.download_dir = original_dir
+            
+            return self._get_final_stats()
+            
+        except Exception as e:
+            logger.error(f"Failed to download workspace: {e}")
+            raise DownloadError(f"Workspace download failed: {e}")
+    
     def _download_single_track(self, track_data: Dict[str, Any], 
                               track_id: Optional[str] = None) -> None:
         """

@@ -1,14 +1,22 @@
 """Command-line interface for Suno Downloader."""
 
 import argparse
+import os
 import sys
 from typing import Optional, Dict, Any
 
 from config import config
 from logger import logger, setup_logger
 from exceptions import SunoDownloaderError, ConfigurationError, TokenError
-from utils import load_token_from_file, save_token_to_file, validate_token
+from utils import (
+    load_token_from_file, save_token_to_file, validate_token,
+    load_last_download_folder, save_last_download_folder
+)
 from downloader import SunoDownloader
+
+
+DL_TOKEN_FILE = r"C:\Users\nfxbe\Downloads\token.txt"
+DL_WORKSPACE_FILE = r"C:\Users\nfxbe\Downloads\wid.txt"
 
 
 class InteractivePrompt:
@@ -45,9 +53,7 @@ class InteractivePrompt:
                 return load_token_from_file(config.DEFAULT_TOKEN_FILE)
         
         # Prompt for token file path
-        token_file = self.prompt_for_input(
-            "Enter path to token file (or leave empty to paste token directly)"
-        )
+        token_file = "" #self.prompt_for_input(            "Enter path to token file (or leave empty to paste token directly)"        )
         
         if token_file:
             try:
@@ -72,14 +78,58 @@ class InteractivePrompt:
         
         return token
     
-    def get_download_options(self) -> Dict[str, Any]:
+    def get_download_options(self, preset_workspace_id: Optional[str] = None) -> Dict[str, Any]:
         """Get download options from user."""
         options = {}
         
+        # Get last used download folder or fallback to default
+        last_folder = load_last_download_folder() or config.DEFAULT_DOWNLOAD_DIR
+        
+        # Check for workspace ID first
+        workspace_id = preset_workspace_id
+        if workspace_id is None:
+            workspace_id = self.prompt_for_input(
+                "Enter workspace ID to download (leave empty to download from feed)",
+                ""
+            )
+        
+        if workspace_id:
+            # If workspace ID provided, set minimal options and return
+            options['workspace_id'] = workspace_id
+            options['directory'] = self.prompt_for_input(
+                "Enter download folder path", 
+                last_folder
+            )
+            
+            # Thread count for concurrent downloads
+            thread_count = self.prompt_for_input(
+                "Number of download threads", 
+                str(config.DEFAULT_THREADS)
+            )
+            try:
+                options['threads'] = int(thread_count)
+            except ValueError:
+                options['threads'] = config.DEFAULT_THREADS
+                logger.warning(f"Invalid thread count, using default: {config.DEFAULT_THREADS}")
+            
+            # Thumbnails
+            options['with_thumbnails'] = self.prompt_yes_no("Download and embed thumbnails?", True)
+            
+            # ID suffix
+            options['with_id_suffix'] = self.prompt_yes_no("Add track ID suffix to filenames?", True)
+            
+            # Proxy
+            proxy = self.prompt_for_input("Enter proxy string (leave empty for none)", "")
+            if proxy:
+                options['proxy'] = proxy
+            
+            return options
+        
+        # Continue with regular feed download options
         # Download directory
         options['directory'] = self.prompt_for_input(
             "Enter download folder path", 
-            config.DEFAULT_DOWNLOAD_DIR
+            last_folder
         )
         
         # Thread count for concurrent downloads
@@ -125,6 +175,42 @@ def validate_token_file(filepath: str) -> bool:
         return False
 
 
+def load_workspace_id_from_file(filepath: str) -> str:
+    """Load workspace ID from a text file."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            workspace_id = f.read().strip()
+
+        if not workspace_id:
+            raise ConfigurationError(f"Workspace ID file is empty: {filepath}")
+
+        logger.info(f"Workspace ID loaded from {filepath}")
+        return workspace_id
+    except FileNotFoundError:
+        raise ConfigurationError(f"Workspace ID file not found: {filepath}")
+    except Exception as e:
+        raise ConfigurationError(f"Error reading workspace ID file {filepath}: {e}")
+
+
+def load_dldata_values() -> Dict[str, Optional[str]]:
+    """Load token/workspace from fixed Downloads files for --dldata mode."""
+    values: Dict[str, Optional[str]] = {"token": None, "workspace_id": None}
+
+    if os.path.isfile(DL_TOKEN_FILE):
+        try:
+            values["token"] = load_token_from_file(DL_TOKEN_FILE)
+        except ConfigurationError as e:
+            logger.warning(f"Could not load --dldata token file: {e}")
+
+    if os.path.isfile(DL_WORKSPACE_FILE):
+        try:
+            values["workspace_id"] = load_workspace_id_from_file(DL_WORKSPACE_FILE)
+        except ConfigurationError as e:
+            logger.warning(f"Could not load --dldata workspace file: {e}")
+
+    return values
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure argument parser."""
     parser = argparse.ArgumentParser(
@@ -165,6 +251,27 @@ Examples:
         "--test-playlist", 
         action="store_true", 
         help="Test playlist API connection"
+    )
+    
+    # Workspace options
+    parser.add_argument(
+        "--dldata",
+        action="store_true",
+        help=(
+            "Load token from C:\\Users\\nfxbe\\Downloads\\token.txt and workspace ID "
+            "from C:\\Users\\nfxbe\\Downloads\\wid.txt when available"
+        )
+    )
+    parser.add_argument(
+        "--list-workspaces", 
+        action="store_true", 
+        help="List all workspaces (projects) to workspaces.json"
+    )
+    parser.add_argument(
+        "--download-workspace", 
+        type=str,
+        metavar="WORKSPACE_ID",
+        help="Download all tracks from a specific workspace by ID"
     )
     
     # Download options
@@ -227,6 +334,12 @@ Examples:
         type=str, 
         help="Download tracks from specified JSON index file"
     )
+    parser.add_argument(
+        "--workspace-index", 
+        type=str, 
+        default=config.DEFAULT_WORKSPACE_INDEX,
+        help=f"Filename for workspace index (default: {config.DEFAULT_WORKSPACE_INDEX})"
+    )
     
     # Playlist options
     parser.add_argument(
@@ -257,17 +370,27 @@ Examples:
     return parser
 
 
-def handle_interactive_mode() -> Dict[str, Any]:
+def handle_interactive_mode(use_dldata: bool = False) -> Dict[str, Any]:
     """Handle interactive mode and return configuration."""
     prompt = InteractivePrompt()
     
     logger.info("=== Suno Downloader - Interactive Setup ===")
     
+    dldata_values = load_dldata_values() if use_dldata else {"token": None, "workspace_id": None}
+
     # Get token
-    token = prompt.get_token()
+    token = dldata_values.get("token")
+    if token:
+        logger.info("Using token from --dldata file")
+    else:
+        token = prompt.get_token()
     
     # Get download options
-    options = prompt.get_download_options()
+    preset_workspace_id = dldata_values.get("workspace_id")
+    if preset_workspace_id:
+        logger.info("Using workspace ID from --dldata file")
+
+    options = prompt.get_download_options(preset_workspace_id=preset_workspace_id)
     options['token'] = token
     
     return options
@@ -276,10 +399,14 @@ def handle_interactive_mode() -> Dict[str, Any]:
 def handle_test_mode(args: argparse.Namespace) -> None:
     """Handle test mode operations."""
     # Get token for testing
+    dldata_values = load_dldata_values() if args.dldata else {"token": None}
+
     if args.token:
         token = args.token
     elif args.token_file:
         token = load_token_from_file(args.token_file)
+    elif dldata_values.get("token"):
+        token = dldata_values["token"]
     elif validate_token_file(config.DEFAULT_TOKEN_FILE):
         token = load_token_from_file(config.DEFAULT_TOKEN_FILE)
     else:
@@ -319,6 +446,12 @@ def handle_test_mode(args: argparse.Namespace) -> None:
                 logger.info(f"Found {len(playlists)} playlists")
                 for i, playlist in enumerate(playlists[:3]):
                     logger.info(f"Playlist {i+1}: {playlist.get('name', 'Unknown')}")
+        
+        elif args.list_workspaces:
+            # List workspaces to JSON file
+            stats = downloader.create_workspaces_index(args.workspace_index)
+            logger.info(f"Workspaces index created: {stats['workspaces_indexed']} workspaces")
+            logger.info(f"Saved to: {stats['index_file']}")
     
     finally:
         downloader.close()
@@ -336,23 +469,73 @@ def main():
         # Handle different modes
         if args.prompt:
             # Interactive mode
-            config_dict = handle_interactive_mode()
+            config_dict = handle_interactive_mode(use_dldata=args.dldata)
             
-        elif args.test_api or args.test_playlist:
-            # Test mode
+        elif args.test_api or args.test_playlist or args.list_workspaces:
+            # Test mode or workspace listing
             handle_test_mode(args)
+            return
+        
+        elif args.download_workspace:
+            # Download workspace mode
+            dldata_values = load_dldata_values() if args.dldata else {"token": None}
+
+            if not (args.token or args.token_file or dldata_values.get("token")):
+                if not validate_token_file(config.DEFAULT_TOKEN_FILE):
+                    parser.error("Token required for workspace download")
+            
+            # Get token
+            if args.token:
+                token = args.token
+            elif args.token_file:
+                token = load_token_from_file(args.token_file)
+            elif dldata_values.get("token"):
+                token = dldata_values["token"]
+            else:
+                token = load_token_from_file(config.DEFAULT_TOKEN_FILE)
+            
+            # Validate token
+            if not validate_token(token):
+                raise TokenError("Invalid token format")
+            
+            # Parse proxy list
+            proxies_list = args.proxy.split(",") if args.proxy else None
+            
+            # Create downloader
+            downloader = SunoDownloader(
+                token=token,
+                download_dir=args.directory,
+                proxies_list=proxies_list,
+                with_thumbnails=args.with_thumbnail,
+                with_id_suffix=args.with_id_suffix,
+                max_threads=args.threads
+            )
+            
+            try:
+                stats = downloader.download_workspace(args.download_workspace)
+                logger.info(f"Workspace download complete: {stats['downloaded']}/{stats['total_tracks']} tracks")
+                # Save the folder path for future use
+                save_last_download_folder(args.directory)
+            finally:
+                downloader.close()
             return
             
         else:
             # Command-line mode
-            if not (args.token or args.token_file):
+            dldata_values = load_dldata_values() if args.dldata else {"token": None}
+
+            if not (args.token or args.token_file or dldata_values.get("token")):
                 parser.error("Either --token, --token-file, or --prompt is required")
             
             # Get token
             if args.token:
                 token = args.token
-            else:
+            elif args.token_file:
                 token = load_token_from_file(args.token_file)
+            elif dldata_values.get("token"):
+                token = dldata_values["token"]
+            else:
+                token = load_token_from_file(config.DEFAULT_TOKEN_FILE)
             
             # Validate token
             if not validate_token(token):
@@ -389,7 +572,14 @@ def main():
         
         try:
             # Execute download operation
-            if config_dict.get('create_index'):
+            if config_dict.get('workspace_id'):
+                # Download workspace
+                stats = downloader.download_workspace(config_dict['workspace_id'])
+                logger.info(f"Workspace download complete: {stats['downloaded']}/{stats['total_tracks']} tracks")
+                # Save the folder path for future use
+                save_last_download_folder(config_dict['directory'])
+                
+            elif config_dict.get('create_index'):
                 # Create index file
                 stats = downloader.create_index(
                     config_dict['create_index'],
@@ -403,6 +593,8 @@ def main():
                 # Download from index
                 stats = downloader.download_from_index(config_dict['from_index'])
                 logger.info(f"Download complete: {stats['downloaded']} tracks")
+                # Save the folder path for future use
+                save_last_download_folder(config_dict['directory'])
                 
             else:
                 # Download from API
@@ -412,6 +604,8 @@ def main():
                     config_dict.get('liked_only', True)
                 )
                 logger.info(f"Download complete: {stats['downloaded']} tracks")
+                # Save the folder path for future use
+                save_last_download_folder(config_dict['directory'])
         
         finally:
             downloader.close()

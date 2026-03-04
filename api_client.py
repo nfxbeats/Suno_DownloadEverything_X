@@ -146,6 +146,112 @@ class SunoAPIClient:
         response = self._make_request(url)
         return response.json()
     
+    def get_workspace_page(self, page: int = 1) -> Dict[str, Any]:
+        """
+        Get a page from the workspace (projects) API.
+        
+        Args:
+            page: Page number to fetch
+            
+        Returns:
+            API response data
+        """
+        params = {
+            "page": page,
+            "sort": "max_created_at_last_updated_clip",
+            "show_trashed": "false"
+        }
+        
+        url = f"{config.WORKSPACE_API_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
+        
+        logger.info(f"Fetching workspace page {page}")
+        response = self._make_request(url)
+        return response.json()
+    
+    def get_workspace_by_id(self, workspace_id: str) -> Dict[str, Any]:
+        """
+        Get a specific workspace by ID with all clips (handles pagination).
+        
+        Args:
+            workspace_id: Workspace/project ID
+            
+        Returns:
+            Workspace data including all clips from all pages
+        """
+        logger.info(f"Fetching workspace: {workspace_id}")
+        
+        all_clips = []
+        page = 0
+        workspace_data = None
+        
+        while True:
+            # Use base project URL with pagination
+            url = f"https://studio-api.prod.suno.com/api/project/{workspace_id}?page={page}"
+            
+            logger.debug(f"Fetching workspace {workspace_id} page {page}")
+            response = self._make_request(url)
+            data = response.json()
+            
+            # Store workspace metadata from first page
+            if workspace_data is None:
+                workspace_data = data.copy()
+            
+            # Extract clips from this page
+            project_clips = data.get("project_clips", [])
+            
+            if not project_clips:
+                logger.info(f"No more clips found on page {page} for workspace {workspace_id}")
+                break
+            
+            logger.info(f"Found {len(project_clips)} clips on page {page} for workspace {workspace_id}")
+            all_clips.extend(project_clips)
+            
+            page += 1
+            
+            # Apply page delay between requests
+            if project_clips:  # Only delay if we got clips and might fetch more
+                time.sleep(config.PAGE_DELAY)
+        
+        # Update the workspace data with all collected clips
+        workspace_data["project_clips"] = all_clips
+        logger.info(f"Total clips retrieved for workspace {workspace_id}: {len(all_clips)}")
+        
+        return workspace_data
+    
+    def get_all_workspaces(self) -> List[Dict[str, Any]]:
+        """
+        Get all workspaces (projects) from the API.
+        
+        Returns:
+            List of workspace data dictionaries
+        """
+        all_workspaces = []
+        page = 1
+        
+        while True:
+            try:
+                data = self.get_workspace_page(page)
+                projects = data.get("projects", [])
+                
+                if not projects:
+                    logger.info(f"No more workspaces found on page {page}")
+                    break
+                
+                logger.info(f"Found {len(projects)} workspaces on page {page}")
+                all_workspaces.extend(projects)
+                
+                page += 1
+                
+                # Apply page delay
+                time.sleep(config.PAGE_DELAY)
+                
+            except APIError as e:
+                logger.error(f"Failed to fetch workspace page {page}: {e}")
+                break
+        
+        logger.info(f"Total workspaces retrieved: {len(all_workspaces)}")
+        return all_workspaces
+    
     def get_all_tracks(self, start_page: int = 1, end_page: Optional[int] = None, 
                       liked_only: bool = True) -> Iterator[Dict[str, Any]]:
         """

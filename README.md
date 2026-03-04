@@ -149,6 +149,16 @@ or
 python main.py --token "<your pasted token>"
 ```
 
+**Use Downloads token/workspace files automatically:**
+```bash
+python main.py --prompt --dldata
+```
+With `--dldata`, the script will try to load:
+- token from `C:\Users\nfxbe\Downloads\token.txt`
+- workspace ID from `C:\Users\nfxbe\Downloads\wid.txt`
+
+If those files exist and contain valid values, token/workspace prompts are skipped.
+
 This will download all your liked songs with thumbnails and track ID suffixes into a folder named `suno-downloads`.
 
 **Custom Directory:**
@@ -198,6 +208,7 @@ python main.py --token-file "token.txt" --start-page 1 --end-page 10
 - `--token` **(Required if not using --token-file or --prompt)**: Your Suno authorization token.
 - `--token-file` **(Required if not using --token or --prompt)**: Path to a text file containing your Suno authorization token.
 - `--prompt` **(Required if not using --token or --token-file)**: Interactive prompt for all download parameters.
+- `--dldata` (Optional): Load token from `C:\Users\nfxbe\Downloads\token.txt` and workspace ID from `C:\Users\nfxbe\Downloads\wid.txt` when available; in prompt mode this skips token/workspace prompts.
 - `--directory` (Optional): The local directory where files will be saved. Defaults to `suno-downloads`.
 - `--with-thumbnail` (Optional): Download and embed the song's cover art. **Enabled by default**.
 - `--with-id-suffix` (Optional): Append last 6 characters of track ID to filenames. **Enabled by default**.

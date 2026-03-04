@@ -210,3 +210,40 @@ def get_file_info(filepath: str) -> Dict[str, Any]:
         }
     except OSError:
         return {'exists': False}
+
+
+def load_last_download_folder() -> Optional[str]:
+    """
+    Load the last used download folder from file.
+    
+    Returns:
+        Last download folder path or None if not found
+    """
+    try:
+        if os.path.exists(config.LAST_FOLDER_FILE):
+            with open(config.LAST_FOLDER_FILE, 'r', encoding='utf-8') as f:
+                folder = f.read().strip()
+                if folder and os.path.isdir(folder):
+                    logger.debug(f"Loaded last download folder: {folder}")
+                    return folder
+                elif folder:
+                    logger.debug(f"Last download folder no longer exists: {folder}")
+    except Exception as e:
+        logger.debug(f"Could not load last download folder: {e}")
+    
+    return None
+
+
+def save_last_download_folder(folder_path: str) -> None:
+    """
+    Save the download folder path for future use.
+    
+    Args:
+        folder_path: Path to the download folder to remember
+    """
+    try:
+        with open(config.LAST_FOLDER_FILE, 'w', encoding='utf-8') as f:
+            f.write(folder_path)
+        logger.debug(f"Saved last download folder: {folder_path}")
+    except Exception as e:
+        logger.debug(f"Could not save last download folder: {e}")

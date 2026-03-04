@@ -12,11 +12,14 @@ class SunoConfig:
     # API Configuration
     BASE_API_URL: str = "https://studio-api.prod.suno.com/api/feed/v2"
     PLAYLIST_API_URL: str = "https://studio-api.prod.suno.com/api/playlist/me"
+    WORKSPACE_API_URL: str = "https://studio-api.prod.suno.com/api/project/me"
     
     # File Configuration
     DEFAULT_DOWNLOAD_DIR: str = "suno-downloads"
     DEFAULT_TOKEN_FILE: str = "token.txt"
     DEFAULT_PLAYLIST_INDEX: str = "playlist_index.json"
+    DEFAULT_WORKSPACE_INDEX: str = "workspaces.json"
+    LAST_FOLDER_FILE: str = ".last_download_folder"
     
     # Download Configuration
     DEFAULT_TIMEOUT: int = 30
